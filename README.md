@@ -92,7 +92,9 @@ Use a recent `to` value inside Market Data's retention window in a live call.
 
 ## Connect Codex locally
 
-Build the binary, then add this entry to `~/.codex/config.toml` or to a trusted project's `.codex/config.toml`. Replace the command path with your binary location:
+For the Compose HTTP service, this repository already has `.codex/config.toml` pointing to `http://127.0.0.1:8082/mcp`. Start the stack, then open Settings → MCP servers in the ChatGPT desktop app and restart the server. Type `/mcp` in the composer to inspect the connection. The project must be trusted. The Codex CLI is optional. See the [official Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp?surface=app).
+
+For stdio instead, build the binary and add this entry to `~/.codex/config.toml`. Replace the command path with your binary location:
 
 ```toml
 [mcp_servers.market_mcp]
@@ -100,14 +102,24 @@ command = "/path/to/market-mcp/bin/market-mcp"
 tool_timeout_sec = 40
 ```
 
-You can also configure `url = "http://127.0.0.1:8082/mcp"` instead of `command` after starting HTTP mode. Use `codex mcp list` or `/mcp` in the Codex terminal UI to inspect the connection. See the [official Codex MCP setup](https://learn.chatgpt.com/docs/extend/mcp?surface=cli).
-
 ## Connect ChatGPT later
 
 ChatGPT web cannot read a local Codex configuration or connect directly to a loopback endpoint on this machine. Two deployment paths are possible:
 
 1. Keep Market MCP on loopback and use [Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels) from a host that can reach `http://127.0.0.1:8082/mcp`. Configure the tunnel and ChatGPT developer-mode app in the appropriate organization/workspace. Store tunnel credentials outside this repository.
 2. Put an authenticated HTTPS reverse proxy in front of the loopback listener. The proxy must enforce access control and TLS, then forward to `/mcp`. Register that protected remote endpoint in the ChatGPT app. This repository does not provide that proxy or an authentication implementation.
+
+For a local tunnel, create a tunnel in [OpenAI Platform](https://platform.openai.com/settings/organization/tunnels). Pass its ID to `make tunnel-init` and set the runtime API key in your shell. The key is never written by these Make targets:
+
+```sh
+make tunnel-init TUNNEL_ID=tunnel_...
+read -rs 'CONTROL_PLANE_API_KEY?Runtime API key: '
+export CONTROL_PLANE_API_KEY
+printf '\n'
+make tunnel-run
+```
+
+The `read` command above is for zsh. It takes the key without adding it to shell history. `make tunnel-run` runs `tunnel-doctor` first. Keep it running while ChatGPT uses the tools. In another terminal, run `make tunnel-ready` to check the local tunnel client. You can run `make tunnel-doctor` alone to check the profile. `tunnel-init` creates a profile named `market-mcp` and does not replace an existing profile. The tunnel client's admin listener uses `127.0.0.1:8083` to avoid the Market Data, Analyzer, and MCP ports.
 
 Do not expose the unauthenticated HTTP listener directly. See the [official ChatGPT connection guide](https://developers.openai.com/plugins/deploy/connect-chatgpt).
 

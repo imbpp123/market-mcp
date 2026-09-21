@@ -1,0 +1,3 @@
+[mcp_servers.market_mcp]
+url = "http://127.0.0.1:8082/mcp"
+tool_timeout_sec = 40
