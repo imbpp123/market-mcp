@@ -1,6 +1,46 @@
 name: market-mcp
 
 services:
+  market-data-service:
+    image: ghcr.io/imbpp123/market-data:1.0.1
+    platform: linux/amd64
+    network_mode: host
+    volumes:
+      - type: bind
+        source: ./config/market-data.yaml
+        target: /etc/market-data/config.yaml
+        read_only: true
+        bind:
+          create_host_path: false
+    environment:
+      MDS_SERVER_GRPC_HOST: 127.0.0.1
+      MDS_SERVER_HTTP_HOST: 127.0.0.1
+      MDS_STORAGE_DRIVER: memory
+      GOMEMLIMIT: 700MiB
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1000000000
+    memswap_limit: 1000000000
+    stop_grace_period: 40s
+    restart: "no"
+
+  market-analyzer-service:
+    image: ghcr.io/imbpp123/market-analyzer:v1.0.1@sha256:fb3a696989ea42eb3a6dcbee2470c4f6525729ca1bdda38f457e00a857c4c8ec
+    network_mode: host
+    environment:
+      MARKET_DATA_ENDPOINT: 127.0.0.1:9090
+      MARKET_ANALYZER_GRPC_ADDRESS: 127.0.0.1:9091
+      MARKET_ANALYZER_HTTP_ADDRESS: 127.0.0.1:8081
+    depends_on:
+      market-data-service:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 40s
+    restart: "no"
+
   market-mcp:
     image: market-mcp:local
     build:
@@ -12,6 +52,9 @@ services:
       MARKET_MCP_HTTP_ADDR: 127.0.0.1:8082
       MARKET_DATA_ENDPOINT: 127.0.0.1:9090
       MARKET_ANALYZER_ENDPOINT: 127.0.0.1:9091
+    depends_on:
+      market-analyzer-service:
+        condition: service_healthy
     read_only: true
     cap_drop: [ALL]
     security_opt: [no-new-privileges:true]

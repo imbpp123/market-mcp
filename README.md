@@ -44,13 +44,13 @@ The server handles SIGINT and SIGTERM. HTTP shutdown allows ten seconds for acti
 
 ## Run with Docker Compose
 
-Start Market Data and Market Analyzer first. Their gRPC services must be reachable on the host at `127.0.0.1:9090` and `127.0.0.1:9091`. Then run:
+Compose pulls the Market Data and Market Analyzer release images and builds Market MCP. The Analyzer image uses [release `v1.0.1`](https://github.com/imbpp123/market-analyzer/releases/tag/v1.0.1) with a fixed digest. No local Analyzer checkout is needed. On macOS, enable **Host networking** in Docker Desktop settings before starting the stack; otherwise `/mcp` is not reachable from the host. Then run:
 
 ```sh
 docker compose up --build -d
 ```
 
-The MCP endpoint remains `http://127.0.0.1:8082/mcp`. The Compose service uses host networking because Market MCP accepts only loopback endpoints. It has no `ports` mapping and does not start the two upstream services. On macOS, enable **Host networking** in Docker Desktop settings before starting it. Host networking gives this container access to host network services; use this Compose file only on a trusted host.
+Compose starts Market Data, waits for its health check, starts Market Analyzer, waits for its health check, and then starts Market MCP. The MCP endpoint is `http://127.0.0.1:8082/mcp`. Market Data and Analyzer also bind their gRPC and operational HTTP listeners to loopback. All three containers use host networking because Market MCP accepts only loopback endpoints. Do not run another copy of either upstream service on the same host ports. See [Docker's host networking guide](https://docs.docker.com/engine/network/drivers/host/). Host networking gives these containers access to host network services; use this Compose file only on a trusted host. Market Data uses memory storage, so its candle history is lost when the stack stops.
 
 ```sh
 docker compose down
