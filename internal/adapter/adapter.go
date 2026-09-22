@@ -167,6 +167,14 @@ func validInterval(s string) bool {
 	return false
 }
 
+func validAnalyzerInterval(s string) bool {
+	switch s {
+	case "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M":
+		return true
+	}
+	return false
+}
+
 func parseTime(field, s string) (*timestamppb.Timestamp, error) {
 	t, err := time.Parse(time.RFC3339Nano, s)
 	if err != nil || t.Before(time.Unix(0, 0)) {
@@ -200,7 +208,7 @@ func (a selectionArgs) request() (*av1.Selection, error) {
 	if err := a.identity.validate(); err != nil {
 		return nil, err
 	}
-	if !validInterval(a.Interval) {
+	if !validAnalyzerInterval(a.Interval) {
 		return nil, invalid("interval", "unsupported interval")
 	}
 	to, err := parseTime("to", a.To)

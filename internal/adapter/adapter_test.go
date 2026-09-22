@@ -132,6 +132,9 @@ func TestIdentityValidation(t *testing.T) {
 func TestCandleRangeValidation(t *testing.T) {
 	tests := []struct{ name, from, to, interval, field string }{
 		{"valid", "2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z", "1m", ""},
+		{"one second", "2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z", "1s", ""},
+		{"eight hours", "2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z", "8h", ""},
+		{"three days", "2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z", "3d", ""},
 		{"bad from", "yesterday", "2026-09-21T10:01:00Z", "1m", "from"},
 		{"reversed", "2026-09-21T10:02:00Z", "2026-09-21T10:01:00Z", "1m", "from"},
 		{"bad interval", "2026-09-21T10:00:00Z", "2026-09-21T10:01:00Z", "1minute", "interval"},
@@ -146,6 +149,37 @@ func TestCandleRangeValidation(t *testing.T) {
 			var e *toolError
 			require.ErrorAs(t, err, &e)
 			assert.Equal(t, tt.field, e.Field)
+		})
+	}
+}
+
+func TestAnalyzerIntervalValidation(t *testing.T) {
+	tests := []struct {
+		name     string
+		interval string
+		valid    bool
+	}{
+		{"minute", "1m", true},
+		{"month", "1M", true},
+		{"one second", "1s", false},
+		{"eight hours", "8h", false},
+		{"three days", "3d", false},
+		{"unknown", "1minute", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			selection := validSelection()
+			selection.Interval = tt.interval
+
+			_, err := selection.request()
+
+			if tt.valid {
+				require.NoError(t, err)
+				return
+			}
+			var toolErr *toolError
+			require.ErrorAs(t, err, &toolErr)
+			assert.Equal(t, "interval", toolErr.Field)
 		})
 	}
 }

@@ -53,6 +53,14 @@ func TestToolSchemasAndReadOnlyHints(t *testing.T) {
 		}
 		exchange := schema.Properties["exchange"].(map[string]any)
 		assert.Len(t, exchange["enum"], 2, "tool %s", tool.Name)
+		if interval, ok := schema.Properties["interval"]; ok {
+			values := interval.(map[string]any)["enum"].([]any)
+			if tool.Name == "get_candles" {
+				assert.ElementsMatch(t, []any{"1s", "1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "8h", "12h", "1d", "3d", "1w", "1M"}, values)
+			} else {
+				assert.ElementsMatch(t, []any{"1m", "3m", "5m", "15m", "30m", "1h", "2h", "4h", "6h", "12h", "1d", "1w", "1M"}, values, "tool %s", tool.Name)
+			}
+		}
 		if tool.Name == "find_active_instruments" {
 			for _, field := range []string{"min_volume_24h", "min_trades_24h", "min_natr", "natr_period"} {
 				assert.Contains(t, schema.Properties, field)
