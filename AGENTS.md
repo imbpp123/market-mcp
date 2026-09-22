@@ -7,7 +7,7 @@ Make the smallest sufficient change. Design non-trivial logic so it can be teste
 Before making changes:
 
 1. Read this file, `README.md`, and `CONTRIBUTING.md` if present. Read any instructions that apply to the target directory.
-2. Read the relevant guides in the [documentation index](README.md#documentation), starting with [architecture](docs/architecture.md) for implementation changes.
+2. Read the relevant guides in the [documentation index](README.md#documentation).
 3. Inspect the existing code, tests, build commands, and Git status. Preserve user changes.
 4. Identify the required behavior, affected layers, and test cases before implementation.
 
@@ -75,6 +75,8 @@ Separate calculations from I/O. Keep business rules and validation directly test
 ## Go coding style
 
 - Use standard Go formatting with `gofmt`. Keep a blank line between top-level type, function, and method declarations. Within functions, separate logical blocks with blank lines and keep related statements together; in tests, visually separate setup, action, and assertions. `gofmt` does not add this logical spacing for you. Avoid dense one-line control flow or multiple statements on one line. Use clear names and small, focused functions.
+- In Go files, order related types by dependency: independent types first, then types that use them. Keep each type's exported methods, then unexported methods, directly after the type. After the type groups, put exported package functions, then unexported package functions. Keep constants near the declarations they describe.
+- In named-field struct literals with multiple fields, put each field on its own line.
 - Make the smallest sufficient change. Preserve the existing style and public interfaces unless the task requires a change.
 - Prefer the standard library. Add dependencies only for a concrete requirement.
 - Prefer unexported types and functions unless another package needs them.

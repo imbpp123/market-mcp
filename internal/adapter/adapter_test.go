@@ -45,9 +45,11 @@ func (f *fakeData) GetKlines(context.Context, *dv1.GetKlinesRequest, ...grpc.Cal
 }
 
 type fakeAnalyzer struct {
-	atr    *av1.GetATRResponse
-	levels *av1.GetLevelsResponse
-	err    error
+	atr           *av1.GetATRResponse
+	levels        *av1.GetLevelsResponse
+	active        *av1.FindActiveInstrumentsResponse
+	activeRequest *av1.FindActiveInstrumentsRequest
+	err           error
 }
 
 func (f *fakeAnalyzer) GetATR(context.Context, *av1.GetATRRequest, ...grpc.CallOption) (*av1.GetATRResponse, error) {
@@ -68,6 +70,11 @@ func (f *fakeAnalyzer) GetTrend(context.Context, *av1.GetTrendRequest, ...grpc.C
 
 func (f *fakeAnalyzer) GetLevels(context.Context, *av1.GetLevelsRequest, ...grpc.CallOption) (*av1.GetLevelsResponse, error) {
 	return f.levels, f.err
+}
+
+func (f *fakeAnalyzer) FindActiveInstruments(_ context.Context, req *av1.FindActiveInstrumentsRequest, _ ...grpc.CallOption) (*av1.FindActiveInstrumentsResponse, error) {
+	f.activeRequest = req
+	return f.active, f.err
 }
 
 func testAdapter(t *testing.T, data *fakeData, analyzer *fakeAnalyzer, maxBytes int) *Adapter {
@@ -168,6 +175,237 @@ func TestExtremaSettings(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestActiveRequestPreservesOptionalThresholds(t *testing.T) {
+	zeroVolume := "0"
+	zeroTrades := int64(0)
+	zeroNATR := "0"
+	period := uint32(999)
+	tests := []struct {
+		name   string
+		input  activeArgs
+		assert func(*testing.T, *av1.FindActiveInstrumentsRequest)
+	}{
+		{
+			name: "omitted thresholds",
+			input: activeArgs{
+				Exchange: "binance",
+				Market:   "spot",
+			},
+			assert: func(t *testing.T, req *av1.FindActiveInstrumentsRequest) {
+				assert.Nil(t, req.MinVolume_24H)
+				assert.Nil(t, req.MinTrades_24H)
+				assert.Nil(t, req.MinNatr)
+				assert.Nil(t, req.NatrPeriod)
+			},
+		},
+		{
+			name: "present zeros and maximum period",
+			input: activeArgs{
+				Exchange:     "bybit",
+				Market:       "linear",
+				MinVolume24H: &zeroVolume,
+				MinTrades24H: &zeroTrades,
+				MinNATR:      &zeroNATR,
+				NATRPeriod:   &period,
+			},
+			assert: func(t *testing.T, req *av1.FindActiveInstrumentsRequest) {
+				assert.Equal(t, "bybit", req.GetExchange())
+				assert.Equal(t, "linear", req.GetMarket())
+				assert.Equal(t, "0", req.GetMinVolume_24H())
+				assert.NotNil(t, req.MinTrades_24H)
+				assert.Equal(t, int64(0), req.GetMinTrades_24H())
+				assert.Equal(t, "0", req.GetMinNatr())
+				assert.Equal(t, uint32(999), req.GetNatrPeriod())
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, err := tt.input.request()
+			require.NoError(t, err)
+			tt.assert(t, req)
+		})
+	}
+}
+
+func TestActiveRequestRejectsInvalidInput(t *testing.T) {
+	negativeVolume := "-1"
+	exponentNATR := "1e2"
+	negativeTrades := int64(-1)
+	zeroPeriod := uint32(0)
+	largePeriod := uint32(1000)
+	validNATR := "2"
+	tests := []struct {
+		name  string
+		input activeArgs
+		field string
+	}{
+		{
+			name: "exchange",
+			input: activeArgs{
+				Exchange: "other",
+				Market:   "spot",
+			},
+			field: "exchange",
+		},
+		{
+			name: "market",
+			input: activeArgs{
+				Exchange: "binance",
+				Market:   "other",
+			},
+			field: "market",
+		},
+		{
+			name: "negative volume",
+			input: activeArgs{
+				Exchange:     "binance",
+				Market:       "spot",
+				MinVolume24H: &negativeVolume,
+			},
+			field: "min_volume_24h",
+		},
+		{
+			name: "negative trades",
+			input: activeArgs{
+				Exchange:     "binance",
+				Market:       "spot",
+				MinTrades24H: &negativeTrades,
+			},
+			field: "min_trades_24h",
+		},
+		{
+			name: "exponent NATR",
+			input: activeArgs{
+				Exchange: "binance",
+				Market:   "spot",
+				MinNATR:  &exponentNATR,
+			},
+			field: "min_natr",
+		},
+		{
+			name: "period without NATR",
+			input: activeArgs{
+				Exchange:   "binance",
+				Market:     "spot",
+				NATRPeriod: &largePeriod,
+			},
+			field: "natr_period",
+		},
+		{
+			name: "zero period",
+			input: activeArgs{
+				Exchange:   "binance",
+				Market:     "spot",
+				MinNATR:    &validNATR,
+				NATRPeriod: &zeroPeriod,
+			},
+			field: "natr_period",
+		},
+		{
+			name: "large period",
+			input: activeArgs{
+				Exchange:   "binance",
+				Market:     "spot",
+				MinNATR:    &validNATR,
+				NATRPeriod: &largePeriod,
+			},
+			field: "natr_period",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := tt.input.request()
+			var e *toolError
+			require.ErrorAs(t, err, &e)
+			assert.Equal(t, tt.field, e.Field)
+		})
+	}
+}
+
+func TestFindActiveInstrumentsKeepsSourceValues(t *testing.T) {
+	volume := "1000.00"
+	trades := int64(0)
+	natr := "2.125"
+	fetched := timestamppb.New(time.Date(2026, 9, 21, 11, 0, 0, 0, time.UTC))
+	f := &fakeAnalyzer{active: &av1.FindActiveInstrumentsResponse{Instruments: []*av1.ActiveInstrument{{
+		Exchange:       "binance",
+		Market:         "spot",
+		Symbol:         "BTCUSDT",
+		BaseAsset:      "BTC",
+		QuoteAsset:     "USDT",
+		Volume_24H:     &volume,
+		Trades_24H:     &trades,
+		Natr:           &natr,
+		StatsFetchedAt: fetched,
+		NatrValueTime:  fetched,
+	}}}}
+	a := testAdapter(t, &fakeData{}, f, DefaultMaxResultBytes)
+	result := a.findActiveInstruments(t.Context(), activeArgs{
+		Exchange: "binance",
+		Market:   "spot",
+	})
+
+	require.False(t, result.IsError, "tool error = %v", payload(t, result))
+	m := payload(t, result)
+	assert.Equal(t, "2026-09-21T12:00:00Z", m["served_at"])
+	rows := m["instruments"].([]any)
+	require.Len(t, rows, 1)
+	row := rows[0].(map[string]any)
+	assert.Equal(t, "BTCUSDT", row["symbol"])
+	assert.Equal(t, "1000.00", row["volume_24h"])
+	assert.Equal(t, "0", row["trades_24h"])
+	assert.Equal(t, "2.125", row["natr"])
+	assert.Equal(t, "2026-09-21T11:00:00Z", row["stats_fetched_at"])
+	assert.Equal(t, "2026-09-21T11:00:00Z", row["natr_value_time"])
+}
+
+func TestFindActiveInstrumentsUpstreamFailure(t *testing.T) {
+	st, err := status.New(codes.FailedPrecondition, "daily candles missing").WithDetails(&av1.ErrorDetail{Reason: "incomplete_data"})
+	require.NoError(t, err)
+	f := &fakeAnalyzer{err: st.Err()}
+	a := testAdapter(t, &fakeData{}, f, DefaultMaxResultBytes)
+	result := a.findActiveInstruments(t.Context(), activeArgs{
+		Exchange: "binance",
+		Market:   "spot",
+	})
+
+	require.True(t, result.IsError)
+	m := payload(t, result)
+	assert.Equal(t, "failed_precondition", m["code"])
+	assert.Equal(t, "incomplete_data", m["reason"])
+	assert.NotContains(t, m, "instruments")
+}
+
+func TestFindActiveInstrumentsEmptyResult(t *testing.T) {
+	f := &fakeAnalyzer{active: &av1.FindActiveInstrumentsResponse{}}
+	a := testAdapter(t, &fakeData{}, f, DefaultMaxResultBytes)
+	result := a.findActiveInstruments(t.Context(), activeArgs{
+		Exchange: "binance",
+		Market:   "spot",
+	})
+
+	require.False(t, result.IsError, "tool error = %v", payload(t, result))
+	assert.Equal(t, []any{}, payload(t, result)["instruments"])
+}
+
+func TestFindActiveInstrumentsOversizeFailsWithoutPartialData(t *testing.T) {
+	f := &fakeAnalyzer{active: &av1.FindActiveInstrumentsResponse{}}
+	for range 100 {
+		f.active.Instruments = append(f.active.Instruments, &av1.ActiveInstrument{Symbol: strings.Repeat("X", 128)})
+	}
+	a := testAdapter(t, &fakeData{}, f, 1024)
+	result := a.findActiveInstruments(t.Context(), activeArgs{
+		Exchange: "binance",
+		Market:   "spot",
+	})
+
+	require.True(t, result.IsError)
+	m := payload(t, result)
+	assert.Equal(t, "result_too_large", m["reason"])
+	assert.NotContains(t, m, "instruments")
 }
 
 func TestOptionalDecimalAndZero(t *testing.T) {

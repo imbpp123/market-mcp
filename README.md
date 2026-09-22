@@ -44,7 +44,7 @@ The server handles SIGINT and SIGTERM. HTTP shutdown allows ten seconds for acti
 
 ## Run with Docker Compose
 
-Compose pulls the Market Data and Market Analyzer release images and builds Market MCP. The Analyzer image uses [release `v1.0.1`](https://github.com/imbpp123/market-analyzer/releases/tag/v1.0.1) with a fixed digest. No local Analyzer checkout is needed. On macOS, enable **Host networking** in Docker Desktop settings before starting the stack; otherwise `/mcp` is not reachable from the host. Then run:
+Compose pulls the Market Data and Market Analyzer release images and builds Market MCP. The Analyzer image uses [release `v1.1.0`](https://github.com/imbpp123/market-analyzer/releases/tag/v1.1.0) with a fixed digest. No local Analyzer checkout is needed. On macOS, enable **Host networking** in Docker Desktop settings before starting the stack; otherwise `/mcp` is not reachable from the host. Then run:
 
 ```sh
 docker compose up --build -d
@@ -58,7 +58,7 @@ docker compose down
 
 ## Tools and arguments
 
-Every tool requires exact `exchange`, `market`, and `symbol`. Exchange is `binance` or `bybit`; market is `spot` or `linear`. Symbols are case-sensitive and are never changed by this adapter. Input schemas mark required fields and describe optional method settings.
+Every tool requires `exchange` and `market`. Tools that read one symbol also require its exact `symbol`. Exchange is `binance` or `bybit`; market is `spot` or `linear`. Symbols are case-sensitive and are never changed by this adapter. Input schemas mark required fields and describe optional method settings.
 
 | Tool | Extra required arguments | Source |
 | --- | --- | --- |
@@ -70,6 +70,7 @@ Every tool requires exact `exchange`, `market`, and `symbol`. Exchange is `binan
 | `get_extrema` | `interval`, `to`, `candle_count`, `price_source`, `method` and method settings | Analyzer `GetExtrema` |
 | `get_trend` | extrema arguments, `equality_tolerance_pct` | Analyzer `GetTrend` |
 | `get_levels` | extrema arguments, `zone_atr_period`, `zone_width_atr`, `min_touches`, `min_touch_separation_bars` | Analyzer `GetLevels` |
+| `find_active_instruments` | none; `symbol` is not used | Analyzer `FindActiveInstruments` |
 
 Extrema `price_source` is `close` or `high_low`. Method settings are `pivot_span` for `local_extrema`, `reversal_pct` for `reversal_percent`, or both `atr_period` and `atr_multiplier` for `reversal_atr`. Decimal inputs use plain decimal strings. `from` and `to` use RFC3339 timestamps. The candle range is `[from, to)`. MCP accepts `candle_count` from 1 to 1000; Analyzer applies its stricter method requirements. Analyzer selects completed candles using its own alignment rules and reports the actual `source_from` and `source_to` in metadata. See the [Market Data API guide](https://github.com/imbpp123/market-data/blob/main/docs/api.md) and [Analyzer API guide](https://github.com/imbpp123/market-analyzer/blob/main/docs/api.md) for upstream range and setting rules.
 
@@ -81,12 +82,21 @@ For example, a `get_atr` call can use:
 
 Use a recent `to` value inside Market Data's retention window in a live call.
 
+`find_active_instruments` returns trading instruments sorted by symbol. It accepts optional inclusive minimums: `min_volume_24h` (base asset units, decimal string), `min_trades_24h` (integer), and `min_natr` (daily NATR percent, decimal string). All three can be used together. `natr_period` is optional from 1 to 999, defaults to 14, and requires `min_natr`. Omitted thresholds are not applied; a present zero still requires source data. Bybit currently has no trade count, so its instruments cannot pass a trade count threshold. A broad NATR search requests daily candles for each candidate and can exceed the configured timeout. The response includes each match's source values and timestamps when the related filters were applied.
+
+For example:
+
+```json
+{"exchange":"binance","market":"spot","min_volume_24h":"1000","min_trades_24h":100,"min_natr":"2","natr_period":14}
+```
+
 ## Result rules
 
 - Decimal values remain strings. Missing optional fields remain absent; a present zero remains `"0"` or numeric `0` as defined by the upstream field.
 - Every successful result has `served_at`. Market Data rows retain `updated_at` or `fetched_at` from the source. Tickers are labeled `cached_ticker`; `fetched_at` is a local receipt time, not a guarantee of a current exchange price.
 - Candle results include the requested `source_range` and all returned candles. An oversized candle result fails with `result_too_large`; it is never silently cut.
 - Analyzer results preserve `metadata`, effective `settings`, and the typed `result`, including algorithm IDs, numeric policy, `evaluated_at`, `source_from`, and `source_to`. Analyzer's full source candle array is omitted from MCP output on every analysis call. `source_candles.omitted`, `omitted_count`, and `latest_fetched_at` state exactly what was removed. Candle indices in result evidence still refer to that omitted original array. Use `get_candles` for source rows if needed.
+- `find_active_instruments` returns the Analyzer `instruments` array and `served_at`. Its optional source values remain absent when not requested. Protobuf `int64` trade counts are JSON strings, including `"0"`.
 - Other oversized results fail with `result_too_large`. No incomplete extrema or zone list is presented as complete. An unusually large upstream error is replaced with the bounded `error_response_too_large` error.
 - Tool errors are JSON text with `code`, stable `reason` when supplied by upstream, and `message`. Analyzer error details can also include `field`, `upstream_code`, and `upstream_reason`.
 

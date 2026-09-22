@@ -14,8 +14,8 @@ github.com/google/jsonschema-go v0.4.3 h1:/DBOLZTfDow7pe2GmaJNhltueGTtDKICi8V8p+
 github.com/google/jsonschema-go v0.4.3/go.mod h1:r5quNTdLOYEz95Ru18zA0ydNbBuYoo9tgaYcxEYhJVE=
 github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
 github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/imbpp123/market-analyzer v0.0.0-20260916211509-047d628217c5 h1:DC34JYWm2+P73VOMAhj7veNuYsaP+yakyaYhx9w5AHQ=
-github.com/imbpp123/market-analyzer v0.0.0-20260916211509-047d628217c5/go.mod h1:maO5IYJxRvKD4dHVEnJVcU0pPgghJywb8AYzQ18mbCE=
+github.com/imbpp123/market-analyzer v1.1.0 h1:J0TnmV/roV4gUSVL8q+68STRVxWGksWFVSHU+Emzy1M=
+github.com/imbpp123/market-analyzer v1.1.0/go.mod h1:maO5IYJxRvKD4dHVEnJVcU0pPgghJywb8AYzQ18mbCE=
 github.com/imbpp123/market-data/api/go v0.0.0-20260913191535-4e5ce32a4847 h1:BylcXs3hVy/yvlXi8eQBHWG+J1OoHvXtQxbYp+QNOSU=
 github.com/imbpp123/market-data/api/go v0.0.0-20260913191535-4e5ce32a4847/go.mod h1:5y1xEaNgcGmzSICjifX7Mgzi6WQDQx0wLV8So4r44Ek=
 github.com/modelcontextprotocol/go-sdk v1.6.0 h1:PPLS3kn7WtOEnR+Af4X5H96SG0qSab8R/ZQT/HkhPkY=

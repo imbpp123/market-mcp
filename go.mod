@@ -4,7 +4,7 @@ go 1.27.1
 
 require (
 	github.com/google/jsonschema-go v0.4.3
-	github.com/imbpp123/market-analyzer v0.0.0-20260916211509-047d628217c5
+	github.com/imbpp123/market-analyzer v1.1.0
 	github.com/imbpp123/market-data/api/go v0.0.0-20260913191535-4e5ce32a4847
 	github.com/modelcontextprotocol/go-sdk v1.6.0
 	github.com/stretchr/testify v1.11.1
