@@ -36,6 +36,7 @@ type analyzerClient interface {
 	GetExtrema(context.Context, *av1.GetExtremaRequest, ...grpc.CallOption) (*av1.GetExtremaResponse, error)
 	GetTrend(context.Context, *av1.GetTrendRequest, ...grpc.CallOption) (*av1.GetTrendResponse, error)
 	GetLevels(context.Context, *av1.GetLevelsRequest, ...grpc.CallOption) (*av1.GetLevelsResponse, error)
+	FindActiveInstruments(context.Context, *av1.FindActiveInstrumentsRequest, ...grpc.CallOption) (*av1.FindActiveInstrumentsResponse, error)
 }
 
 type Adapter struct {
@@ -99,6 +100,15 @@ type levelsArgs struct {
 	ZoneWidthATR           string `json:"zone_width_atr" jsonschema:"Positive decimal ATR multiplier for zone width"`
 	MinTouches             uint32 `json:"min_touches" jsonschema:"At least two independent touches"`
 	MinTouchSeparationBars uint32 `json:"min_touch_separation_bars" jsonschema:"Positive number of bars between touches"`
+}
+
+type activeArgs struct {
+	Exchange     string  `json:"exchange" jsonschema:"Exchange: binance or bybit"`
+	Market       string  `json:"market" jsonschema:"Market: spot or linear"`
+	MinVolume24H *string `json:"min_volume_24h,omitempty" jsonschema:"Optional minimum 24-hour volume in base asset units; plain nonnegative decimal string"`
+	MinTrades24H *int64  `json:"min_trades_24h,omitempty" jsonschema:"Optional minimum 24-hour trade count; Bybit has no trade count"`
+	MinNATR      *string `json:"min_natr,omitempty" jsonschema:"Optional minimum daily NATR percentage; plain nonnegative decimal string"`
+	NATRPeriod   *uint32 `json:"natr_period,omitempty" jsonschema:"Optional NATR period from 1 to 999; requires min_natr; default 14"`
 }
 
 type toolError struct {
@@ -201,6 +211,40 @@ func (a selectionArgs) request() (*av1.Selection, error) {
 		return nil, invalid("candle_count", "candle_count must be between 1 and 1000")
 	}
 	return &av1.Selection{Exchange: &a.Exchange, Market: &a.Market, Symbol: &a.Symbol, To: to, CandleCount: &a.CandleCount, Interval: &a.Interval}, nil
+}
+
+func (a activeArgs) request() (*av1.FindActiveInstrumentsRequest, error) {
+	if a.Exchange != "binance" && a.Exchange != "bybit" {
+		return nil, invalid("exchange", "exchange must be binance or bybit")
+	}
+	if a.Market != "spot" && a.Market != "linear" {
+		return nil, invalid("market", "market must be spot or linear")
+	}
+	if a.MinVolume24H != nil {
+		if err := decimal("min_volume_24h", *a.MinVolume24H, true); err != nil {
+			return nil, err
+		}
+	}
+	if a.MinTrades24H != nil && *a.MinTrades24H < 0 {
+		return nil, invalid("min_trades_24h", "min_trades_24h must be nonnegative")
+	}
+	if a.MinNATR != nil {
+		if err := decimal("min_natr", *a.MinNATR, true); err != nil {
+			return nil, err
+		}
+	}
+	if a.NATRPeriod != nil && (a.MinNATR == nil || *a.NATRPeriod == 0 || *a.NATRPeriod > 999) {
+		return nil, invalid("natr_period", "natr_period requires min_natr and must be between 1 and 999")
+	}
+
+	return &av1.FindActiveInstrumentsRequest{
+		Exchange:      &a.Exchange,
+		Market:        &a.Market,
+		MinVolume_24H: a.MinVolume24H,
+		MinTrades_24H: a.MinTrades24H,
+		MinNatr:       a.MinNATR,
+		NatrPeriod:    a.NATRPeriod,
+	}, nil
 }
 
 func (a extremaArgs) settings() (*av1.ExtremaSettings, error) {
@@ -496,4 +540,27 @@ func (a *Adapter) levels(ctx context.Context, in levelsArgs) *mcp.CallToolResult
 	settings := &av1.LevelSettings{Extrema: extrema, AtrPeriod: &in.ZoneATRPeriod, ZoneWidthAtr: &in.ZoneWidthATR, MinTouches: &in.MinTouches, MinTouchSeparationBars: &in.MinTouchSeparationBars}
 	req := &av1.GetLevelsRequest{Selection: selection, Settings: settings}
 	return a.analysis(ctx, func(ctx context.Context) (proto.Message, error) { return a.analyzer.GetLevels(ctx, req) })
+}
+
+func (a *Adapter) findActiveInstruments(ctx context.Context, in activeArgs) *mcp.CallToolResult {
+	req, err := in.request()
+	if err != nil {
+		return a.result(nil, err)
+	}
+	ctx, cancel := a.context(ctx)
+	defer cancel()
+
+	resp, err := a.analyzer.FindActiveInstruments(ctx, req)
+	if err != nil {
+		return a.result(nil, err)
+	}
+	m, err := protoMap(resp)
+	if err != nil {
+		return a.result(nil, &toolError{
+			Code:    "data_loss",
+			Reason:  "invalid_upstream_response",
+			Message: "cannot encode upstream response",
+		})
+	}
+	return a.result(m, nil)
 }

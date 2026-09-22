@@ -32,6 +32,8 @@ func inputSchema[T any]() *jsonschema.Schema {
 		"zone_atr_period":           1,
 		"min_touches":               2,
 		"min_touch_separation_bars": 1,
+		"min_trades_24h":            0,
+		"natr_period":               1,
 	} {
 		if field := schema.Properties[name]; field != nil {
 			field.Minimum = &minimum
@@ -41,12 +43,16 @@ func inputSchema[T any]() *jsonschema.Schema {
 		maximum := float64(1000)
 		field.Maximum = &maximum
 	}
+	if field := schema.Properties["natr_period"]; field != nil {
+		maximum := float64(999)
+		field.Maximum = &maximum
+	}
 	for _, name := range []string{"from", "to"} {
 		if field := schema.Properties[name]; field != nil {
 			field.Format = "date-time"
 		}
 	}
-	for _, name := range []string{"reversal_pct", "atr_multiplier", "equality_tolerance_pct", "zone_width_atr"} {
+	for _, name := range []string{"reversal_pct", "atr_multiplier", "equality_tolerance_pct", "zone_width_atr", "min_volume_24h", "min_natr"} {
 		if field := schema.Properties[name]; field != nil {
 			field.Pattern = decimalPattern.String()
 		}
@@ -93,6 +99,15 @@ func (a *Adapter) Server() *mcp.Server {
 	mcp.AddTool(s, &mcp.Tool{Name: "get_levels", Description: "Read Analyzer support and resistance zones and evidence; no trading signal. Source candles are omitted and counted.", Annotations: readOnly, InputSchema: inputSchema[levelsArgs]()},
 		func(ctx context.Context, _ *mcp.CallToolRequest, in levelsArgs) (*mcp.CallToolResult, any, error) {
 			return a.levels(ctx, in), nil, nil
+		})
+	mcp.AddTool(s, &mcp.Tool{
+		Name:        "find_active_instruments",
+		Description: "Find trading instruments by optional minimum 24-hour base volume, 24-hour trade count, and daily NATR percent. NATR needs closed daily candles; broad searches may time out.",
+		Annotations: readOnly,
+		InputSchema: inputSchema[activeArgs](),
+	},
+		func(ctx context.Context, _ *mcp.CallToolRequest, in activeArgs) (*mcp.CallToolResult, any, error) {
+			return a.findActiveInstruments(ctx, in), nil, nil
 		})
 	return s
 }
